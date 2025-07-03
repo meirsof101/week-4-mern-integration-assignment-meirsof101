@@ -1,0 +1,95 @@
+.post-detail {
+  max-width: 800px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.post-header {
+  padding: 2rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.post-detail .post-title {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #1f2937;
+  margin-bottom: 1rem;
+  line-height: 1.2;
+}
+
+.post-detail .post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.post-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.post-featured-image {
+  width: 100%;
+  height: 400px;
+  object-fit: cover;
+}
+
+.post-detail .post-content {
+  padding: 2rem;
+}
+
+.post-body {
+  font-size: 1.125rem;
+  line-height: 1.8;
+  color: #374151;
+  margin-bottom: 2rem;
+}
+
+.post-body p {
+  margin-bottom: 1.5rem;
+}
+
+.post-detail .post-tags {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 1.5rem;
+}
+
+.post-detail .post-tags h3 {
+  margin-bottom: 1rem;
+  color: #1f2937;
+}
+
+/* src/components/Posts/PostForm.css */
+.post-form-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  padding: 2rem;
+}
+
+.post-form-container h1 {
+  margin-bottom: 2rem;
+  color: #1f2937;
+  font-size: 2rem;
+}
+
+.post-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 2rem;
+  flex-wrap: wrap;
+}

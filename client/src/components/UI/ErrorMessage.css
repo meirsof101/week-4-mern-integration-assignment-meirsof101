@@ -1,0 +1,26 @@
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background-color: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 0.5rem;
+  margin: 2rem 0;
+}
+
+.error-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.error-content h3 {
+  color: #dc2626;
+  margin-bottom: 0.5rem;
+  font-size: 1.125rem;
+}
+
+.error-content p {
+  color: #7f1d1d;
+  margin-bottom: 1rem;
+}

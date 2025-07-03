@@ -1,0 +1,65 @@
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency directories
+node_modules/
+**/node_modules/
+jspm_packages/
+
+# Build and dist outputs
+dist/
+dist-ssr/
+build/
+out/
+.next/
+.nuxt/
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Runtime and lock files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Cache and temporary files
+tmp/
+temp/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Editor and system files
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+.DS_Store?
+Thumbs.db
+_*
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Database files
+*.db
+
+# Lock files (optional to ignore)
+pnpm-lock.yaml
+yarn.lock
+package-lock.json
