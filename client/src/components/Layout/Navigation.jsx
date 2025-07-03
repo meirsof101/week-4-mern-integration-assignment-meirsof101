@@ -9,7 +9,7 @@ const Navigation = () => {
     <nav className="navigation">
       <div className="nav-container">
         <Link to="/" className="nav-logo">
-          My Blog
+          Developer Insights
         </Link>
         <ul className="nav-menu">
           <li className="nav-item">
