@@ -1,188 +1,483 @@
+// routes/blog.js - Protected Blog Routes
 const express = require('express');
-const Post = require('../models/Post');
-const Category = require('../models/Category');
-const { postValidation, handleValidationErrors } = require('../middleware/Validation');
+const mongoose = require('mongoose');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { authenticateToken } = require('./auth');
 const router = express.Router();
 
-// GET /api/posts - Get all blog posts
-router.get('/', async (req, res) => {
-  try {
-        const { page = 1, limit = 10, category, status } = req.query;
+// Blog Post Schema
+const blogPostSchema = new mongoose.Schema({
+  title: {
+    type: String,
+    required: [true, 'Title is required'],
+    trim: true,
+    maxlength: [200, 'Title cannot exceed 200 characters']
+  },
+  content: {
+    type: String,
+    required: [true, 'Content is required'],
+    minlength: [10, 'Content must be at least 10 characters long']
+  },
+  excerpt: {
+    type: String,
+    maxlength: [300, 'Excerpt cannot exceed 300 characters']
+  },
+  author: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  authorName: {
+    type: String,
+    required: true
+  },
+  featuredImage: {
+    type: String,
+    default: null
+  },
+  category: {
+    type: String,
+    required: true,
+    enum: ['Technology', 'Travel', 'Food', 'Lifestyle', 'Business', 'Health', 'Other']
+  },
+  tags: [{
+    type: String,
+    trim: true
+  }],
+  status: {
+    type: String,
+    enum: ['draft', 'published', 'archived'],
+    default: 'draft'
+  },
+  readTime: {
+    type: Number,
+    default: 0
+  },
+  views: {
+    type: Number,
+    default: 0
+  },
+  likes: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  comments: [{
+    author: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    authorName: {
+      type: String,
+      required: true
+    },
+    content: {
+      type: String,
+      required: true,
+      maxlength: [1000, 'Comment cannot exceed 1000 characters']
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }]
+}, {
+  timestamps: true
+});
 
-        const query = {}; // don't filter unless asked
+// Calculate read time based on content
+blogPostSchema.pre('save', function(next) {
+  if (this.content) {
+    const wordsPerMinute = 200;
+    const wordCount = this.content.split(/\s+/).length;
+    this.readTime = Math.ceil(wordCount / wordsPerMinute);
+  }
+  next();
+});
 
-        if (status) query.status = status;
-        if (category) query.category = category;
-  
+const BlogPost = mongoose.model('BlogPost', blogPostSchema);
 
-
-    const posts = await Post.find(query)
-      .populate('category', 'name slug')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .exec();
-
-    const total = await Post.countDocuments(query);
-
-    res.json({
-      posts,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page,
-      total
-    });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadDir = 'uploads/images';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// GET /api/posts/:id - Get a specific blog post
-router.get('/:id', async (req, res) => {
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit
+  },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  }
+});
+
+// Middleware to check if user owns the post or is admin
+const requirePostOwnership = async (req, res, next) => {
   try {
-    const post = await Post.findById(req.params.id).populate('category', 'name slug');
-    
+    const post = await BlogPost.findById(req.params.id);
     if (!post) {
       return res.status(404).json({ message: 'Post not found' });
     }
 
-    // Increment views
+    if (post.author.toString() !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied. You can only edit your own posts.' });
+    }
+
+    req.post = post;
+    next();
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// PUBLIC ROUTES (no authentication required)
+
+// Get all published posts with pagination and filtering
+router.get('/posts', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    
+    const search = req.query.search || '';
+    const category = req.query.category || '';
+    const sortBy = req.query.sortBy || 'createdAt';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+
+    // Build query
+    let query = { status: 'published' };
+    
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { content: { $regex: search, $options: 'i' } },
+        { tags: { $in: [new RegExp(search, 'i')] } }
+      ];
+    }
+    
+    if (category && category !== 'All') {
+      query.category = category;
+    }
+
+    const posts = await BlogPost.find(query)
+      .populate('author', 'username firstName lastName')
+      .sort({ [sortBy]: sortOrder })
+      .skip(skip)
+      .limit(limit)
+      .select('-comments'); // Exclude comments from list view
+
+    const totalPosts = await BlogPost.countDocuments(query);
+    const totalPages = Math.ceil(totalPosts / limit);
+
+    res.json({
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching posts:', error);
+    res.status(500).json({ message: 'Server error fetching posts' });
+  }
+});
+
+// Get single post by ID (public)
+router.get('/posts/:id', async (req, res) => {
+  try {
+    const post = await BlogPost.findById(req.params.id)
+      .populate('author', 'username firstName lastName profileImage bio')
+      .populate('comments.author', 'username firstName lastName profileImage');
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Only show published posts to non-owners
+    if (post.status !== 'published') {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    // Increment view count
     post.views += 1;
     await post.save();
 
     res.json(post);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching post:', error);
+    res.status(500).json({ message: 'Server error fetching post' });
   }
 });
 
-// Generate slug from title
-const generateSlug = (title) => {
-  return title
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, '') // Remove special characters
-    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with hyphens
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-};
+// Get categories (public)
+router.get('/categories', (req, res) => {
+  const categories = ['Technology', 'Travel', 'Food', 'Lifestyle', 'Business', 'Health', 'Other'];
+  res.json(categories);
+});
 
-// POST /api/posts - Create a new blog post (with validation)
-router.post('/', postValidation, handleValidationErrors, async (req, res) => {
+// PROTECTED ROUTES (authentication required)
+
+// Create new blog post
+router.post('/posts', authenticateToken, upload.single('featuredImage'), async (req, res) => {
   try {
-    const { title, content, category, author, status, tags, featuredImage } = req.body;
+    const { title, content, excerpt, category, tags, status } = req.body;
 
-    // Debug log to see what we're receiving
-    console.log('Received tags:', tags, 'Type:', typeof tags);
-
-    // Check if category exists
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return res.status(400).json({ message: 'Invalid category' });
+    // Validate required fields
+    if (!title || !content || !category) {
+      return res.status(400).json({ 
+        message: 'Title, content, and category are required' 
+      });
     }
 
-    let slug = generateSlug(title);
-
-    // Ensure slug uniqueness
-    let slugExists = await Post.findOne({ slug });
-    let counter = 1;
-    while (slugExists) {
-      slug = `${generateSlug(title)}-${counter}`;
-      slugExists = await Post.findOne({ slug });
-      counter++;
-    }
-
-    // Process tags - handle both string and array formats
+    // Process tags
     let processedTags = [];
     if (tags) {
-      if (Array.isArray(tags)) {
-        // If tags is already an array, filter and clean it
-        processedTags = [...new Set(tags.map(tag => tag.trim()).filter(tag => tag.length > 0))];
-      } else if (typeof tags === 'string') {
-        // If tags is a string, split it and clean
-        processedTags = [...new Set(tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0))];
-      }
+      processedTags = typeof tags === 'string' ? tags.split(',').map(tag => tag.trim()) : tags;
     }
 
-    const post = new Post({
-      title: title.trim(),
-      slug,
-      content,
-      category,
-      author,
-      status: status || 'draft',
-      tags: processedTags,
-      featuredImage
-    });
-
-    const savedPost = await post.save();
-    const populatedPost = await Post.findById(savedPost._id).populate('category', 'name slug');
-    
-    res.status(201).json(populatedPost);
-  } catch (error) {
-    console.error('Error creating post:', error);
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// PUT /api/posts/:id - Update an existing blog post (with validation)
-router.put('/:id', postValidation, handleValidationErrors, async (req, res) => {
-  try {
-    const { title, content, category, author, status, tags, featuredImage } = req.body;
-
-    // Check if category exists
-    if (category) {
-      const categoryExists = await Category.findById(category);
-      if (!categoryExists) {
-        return res.status(400).json({ message: 'Invalid category' });
-      }
-    }
-
-    const updateData = {
+    // Create new post
+    const newPost = new BlogPost({
       title,
       content,
+      excerpt: excerpt || content.substring(0, 200) + '...',
+      author: req.user.userId,
+      authorName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.username,
       category,
-      author,
-      status,
-      featuredImage
-    };
+      tags: processedTags,
+      status: status || 'draft',
+      featuredImage: req.file ? `/uploads/images/${req.file.filename}` : null
+    });
 
-    // Process tags - handle both string and array formats
+    await newPost.save();
+
+    // Populate author info for response
+    await newPost.populate('author', 'username firstName lastName profileImage');
+
+    res.status(201).json({
+      message: 'Blog post created successfully',
+      post: newPost
+    });
+  } catch (error) {
+    console.error('Error creating post:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({ message: messages.join(', ') });
+    }
+    res.status(500).json({ message: 'Server error creating post' });
+  }
+});
+
+// Update blog post
+router.put('/posts/:id', authenticateToken, requirePostOwnership, upload.single('featuredImage'), async (req, res) => {
+  try {
+    const { title, content, excerpt, category, tags, status } = req.body;
+    const post = req.post;
+
+    // Update fields
+    if (title) post.title = title;
+    if (content) post.content = content;
+    if (excerpt) post.excerpt = excerpt;
+    if (category) post.category = category;
+    if (status) post.status = status;
+
+    // Process tags
     if (tags) {
-      if (Array.isArray(tags)) {
-        updateData.tags = tags.map(tag => tag.trim()).filter(tag => tag.length > 0);
-      } else if (typeof tags === 'string') {
-        updateData.tags = tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+      post.tags = typeof tags === 'string' ? tags.split(',').map(tag => tag.trim()) : tags;
+    }
+
+    // Update featured image if new one is uploaded
+    if (req.file) {
+      post.featuredImage = `/uploads/images/${req.file.filename}`;
+    }
+
+    await post.save();
+    await post.populate('author', 'username firstName lastName profileImage');
+
+    res.json({
+      message: 'Post updated successfully',
+      post
+    });
+  } catch (error) {
+    console.error('Error updating post:', error);
+    res.status(500).json({ message: 'Server error updating post' });
+  }
+});
+
+// Delete blog post
+router.delete('/posts/:id', authenticateToken, requirePostOwnership, async (req, res) => {
+  try {
+    const post = req.post;
+
+    // Delete associated image file
+    if (post.featuredImage) {
+      const imagePath = path.join(__dirname, '..', post.featuredImage);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
       }
     }
 
-    const post = await Post.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate('category', 'name slug');
-
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
-    res.json(post);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// DELETE /api/posts/:id - Delete a blog post
-router.delete('/:id', async (req, res) => {
-  try {
-    const post = await Post.findByIdAndDelete(req.params.id);
+    await BlogPost.findByIdAndDelete(req.params.id);
     
-    if (!post) {
-      return res.status(404).json({ message: 'Post not found' });
-    }
-
     res.json({ message: 'Post deleted successfully' });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error deleting post:', error);
+    res.status(500).json({ message: 'Server error deleting post' });
   }
 });
+
+// Get user's own posts
+router.get('/my-posts', authenticateToken, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const posts = await BlogPost.find({ author: req.user.userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('author', 'username firstName lastName');
+
+    const totalPosts = await BlogPost.countDocuments({ author: req.user.userId });
+    const totalPages = Math.ceil(totalPosts / limit);
+
+    res.json({
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching user posts:', error);
+    res.status(500).json({ message: 'Server error fetching posts' });
+  }
+});
+
+// Like/Unlike post
+router.post('/posts/:id/like', authenticateToken, async (req, res) => {
+  try {
+    const post = await BlogPost.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const userLiked = post.likes.includes(req.user.userId);
+
+    if (userLiked) {
+      // Unlike
+      post.likes.pull(req.user.userId);
+    } else {
+      // Like
+      post.likes.push(req.user.userId);
+    }
+
+    await post.save();
+
+    res.json({
+      message: userLiked ? 'Post unliked' : 'Post liked',
+      likes: post.likes.length,
+      userLiked: !userLiked
+    });
+  } catch (error) {
+    console.error('Error liking post:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Add comment to post
+router.post('/posts/:id/comments', authenticateToken, async (req, res) => {
+  try {
+    const { content } = req.body;
+
+    if (!content || content.trim().length === 0) {
+      return res.status(400).json({ message: 'Comment content is required' });
+    }
+
+    const post = await BlogPost.findById(req.params.id);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const newComment = {
+      author: req.user.userId,
+      authorName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim() || req.user.username,
+      content: content.trim(),
+      createdAt: new Date()
+    };
+
+    post.comments.push(newComment);
+    await post.save();
+
+    // Populate the new comment's author info
+    await post.populate('comments.author', 'username firstName lastName profileImage');
+
+    res.status(201).json({
+      message: 'Comment added successfully',
+      comment: post.comments[post.comments.length - 1]
+    });
+  } catch (error) {
+    console.error('Error adding comment:', error);
+    res.status(500).json({ message: 'Server error adding comment' });
+  }
+});
+
+// Delete comment
+router.delete('/posts/:postId/comments/:commentId', authenticateToken, async (req, res) => {
+  try {
+    const post = await BlogPost.findById(req.params.postId);
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' });
+    }
+
+    const comment = post.comments.id(req.params.commentId);
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' });
+    }
+
+    // Check if user owns the comment or is admin
+    if (comment.author.toString() !== req.user.userId && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    comment.remove();
+    await post.save();
+
+    res.json({ message: 'Comment deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting comment:', error);
+    res.status(500).json({ message: 'Server error deleting comment' });
+  }
+});
+
+// Serve uploaded images
+router.use('/uploads', express.static('uploads'));
 
 module.exports = router;

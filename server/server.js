@@ -11,7 +11,7 @@ const app = express();
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: process.env.CLIENT_URL || 'http://localhost:5000',
   credentials: true
 }));
 
@@ -48,8 +48,8 @@ const authRoutes = require('./routes/auth');
 app.use('/api/auth', authLimiter, authRoutes);
 
 // Import your existing blog routes if you have them
-// const blogRoutes = require('./routes/blog');
-// app.use('/api/blog', blogRoutes);
+const blogRoutes = require('./routes/posts');
+app.use('/api', blogRoutes);
 
 // Basic route for testing
 app.get('/', (req, res) => {

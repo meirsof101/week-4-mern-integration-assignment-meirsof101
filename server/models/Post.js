@@ -83,57 +83,6 @@ PostSchema.pre('save', function (next) {
   next();
 });
 
-// Alternative: Generate slug with random string (uncomment to use instead)
-/*
-PostSchema.pre('save', function (next) {
-  if (!this.isModified('title')) {
-    return next();
-  }
-
-  const baseSlug = this.title
-    .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-');
-
-  // Generate random 6-character string
-  const randomString = Math.random().toString(36).substring(2, 8);
-  this.slug = `${baseSlug}-${randomString}`;
-
-  next();
-});
-*/
-
-// Alternative: Counter-based approach (more user-friendly but complex)
-/*
-PostSchema.pre('save', async function (next) {
-  if (!this.isModified('title')) {
-    return next();
-  }
-
-  const baseSlug = this.title
-    .toLowerCase()
-    .replace(/[^\w ]+/g, '')
-    .replace(/ +/g, '-');
-
-  try {
-    // Check if base slug exists
-    const existingPosts = await this.constructor.find({
-      slug: new RegExp(`^${baseSlug}(-\\d+)?$`)
-    });
-
-    if (existingPosts.length === 0) {
-      this.slug = baseSlug;
-    } else {
-      this.slug = `${baseSlug}-${existingPosts.length + 1}`;
-    }
-    
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-*/
-
 // Virtual for post URL
 PostSchema.virtual('url').get(function () {
   return `/posts/${this.slug}`;
