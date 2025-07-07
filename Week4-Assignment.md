@@ -196,7 +196,6 @@ Application screenshots are available in the `screenshots/` folder:
 - Create/Edit post form
 - User authentication
 - Search and filtering
-- Comments section
 - Mobile responsive views
 
 ## 🧪 Testing
