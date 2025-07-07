@@ -10,8 +10,9 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
+// CORS configuration
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5000',
+  origin: true, // Allow all origins temporarily
   credentials: true
 }));
 

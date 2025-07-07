@@ -46,16 +46,37 @@ const Login = () => {
 
       const data = await response.json();
 
+      // ADD DEBUGGING HERE
+      console.log('Login response:', response);
+      console.log('Login data:', data);
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+
       if (response.ok) {
+        // ADD MORE DEBUGGING
+        console.log('About to call login with data:', data);
+        
         // Use your login function from AuthContext
         await login(data);
+        
+        // CHECK IF TOKEN WAS SAVED
+        const savedToken = localStorage.getItem('token');
+        console.log('Token after login:', savedToken);
+        
+        if (savedToken) {
+          console.log('✅ Token successfully saved to localStorage');
+        } else {
+          console.log('❌ Token NOT saved to localStorage');
+        }
+        
         navigate('/'); // Redirect to home page
       } else {
+        console.log('Login failed with data:', data);
         setError(data.message || 'Login failed');
       }
     } catch (error) {
-      setError('Network error. Please try again.');
       console.error('Login error:', error);
+      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }

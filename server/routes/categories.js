@@ -1,36 +1,53 @@
 const express = require('express');
-const Category = require('../models/Category');
-const { categoryValidation, handleValidationErrors } = require('../middleware/Validation');
 const router = express.Router();
+const mongoose = require('mongoose');
+
+// Category schema (adjust based on your actual schema)
+const categorySchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  description: String,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const Category = mongoose.models.Category || mongoose.model('Category', categorySchema);
 
 // GET /api/categories - Get all categories
 router.get('/', async (req, res) => {
   try {
-    const categories = await Category.find().sort({ name: 1 });
+    const categories = await Category.find({}).sort({ name: 1 });
     res.json(categories);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('Error fetching categories:', error);
+    res.status(500).json({ message: 'Error fetching categories', error: error.message });
   }
 });
 
-// POST /api/categories - Create a new category (with validation)
-router.post('/', categoryValidation, handleValidationErrors, async (req, res) => {
+// POST /api/categories - Create a new category (optional)
+router.post('/', async (req, res) => {
   try {
     const { name, description } = req.body;
-
-    const category = new Category({
-      name,
-      description
-    });
-
-    const savedCategory = await category.save();
-    res.status(201).json(savedCategory);
+    
+    if (!name) {
+      return res.status(400).json({ message: 'Category name is required' });
+    }
+    
+    const category = new Category({ name, description });
+    await category.save();
+    
+    res.status(201).json(category);
   } catch (error) {
     if (error.code === 11000) {
-      res.status(400).json({ message: 'Category already exists' });
-    } else {
-      res.status(400).json({ message: error.message });
+      return res.status(400).json({ message: 'Category already exists' });
     }
+    console.error('Error creating category:', error);
+    res.status(500).json({ message: 'Error creating category', error: error.message });
   }
 });
 

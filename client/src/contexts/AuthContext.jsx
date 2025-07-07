@@ -16,47 +16,79 @@ export const AuthProvider = ({ children }) => {
 
   // Initialize auth state (check if user is already logged in)
   useEffect(() => {
-    // Check localStorage, sessionStorage, or make API call to verify auth
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      // Verify token and set user
-      // For now, just set loading to false
-      setLoading(false);
-    } else {
-      setLoading(false);
+    // Check localStorage for token (use consistent key name)
+    const token = localStorage.getItem('token');
+    const savedUser = localStorage.getItem('user');
+    
+    if (token && savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (error) {
+        console.error('Error parsing saved user:', error);
+        // Clear invalid data
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
     }
+    setLoading(false);
   }, []);
 
-  const login = async (credentials) => {
+  const login = async (responseData) => {
     try {
-      // Make API call to login
-      // const response = await fetch('/api/login', { ... });
-      // const data = await response.json();
+      console.log('AuthContext login called with:', responseData);
       
-      // For now, just simulate login
-      setUser({ id: 1, name: 'User', email: credentials.email });
-      localStorage.setItem('authToken', 'sample-token');
+      // Extract token and user from the response data
+      const { token, user: userData } = responseData;
+      
+      if (!token) {
+        console.error('No token in response data:', responseData);
+        return { success: false, error: 'No token received' };
+      }
+      
+      // Save token and user data to localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
+      
+      console.log('Token saved:', token);
+      console.log('User saved:', userData);
+      
+      // Update state
+      setUser(userData);
+      
       return { success: true };
     } catch (error) {
+      console.error('Login error in AuthContext:', error);
       return { success: false, error: error.message };
     }
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem('authToken');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    console.log('User logged out, tokens cleared');
   };
 
   const register = async (userData) => {
     try {
       // Make API call to register
-      // const response = await fetch('/api/register', { ... });
-      // const data = await response.json();
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData)
+      });
       
-      // For now, just simulate registration
-      setUser({ id: 1, name: userData.name, email: userData.email });
-      localStorage.setItem('authToken', 'sample-token');
-      return { success: true };
+      const data = await response.json();
+      
+      if (response.ok) {
+        // Use the same login logic
+        await login(data);
+        return { success: true };
+      } else {
+        return { success: false, error: data.message || 'Registration failed' };
+      }
     } catch (error) {
       return { success: false, error: error.message };
     }

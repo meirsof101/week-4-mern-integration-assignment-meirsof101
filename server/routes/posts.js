@@ -151,8 +151,6 @@ const requirePostOwnership = async (req, res, next) => {
   }
 };
 
-// PUBLIC ROUTES (no authentication required)
-
 // Get all published posts with pagination and filtering
 router.get('/posts', async (req, res) => {
   try {
@@ -242,9 +240,10 @@ router.get('/categories', (req, res) => {
 // PROTECTED ROUTES (authentication required)
 
 // Create new blog post
+// UPDATED routes/blog.js - Create post route with URL support
 router.post('/posts', authenticateToken, upload.single('featuredImage'), async (req, res) => {
   try {
-    const { title, content, excerpt, category, tags, status } = req.body;
+    const { title, content, excerpt, category, tags, status, featuredImageUrl } = req.body;
 
     // Validate required fields
     if (!title || !content || !category) {
@@ -259,6 +258,16 @@ router.post('/posts', authenticateToken, upload.single('featuredImage'), async (
       processedTags = typeof tags === 'string' ? tags.split(',').map(tag => tag.trim()) : tags;
     }
 
+    // Handle featured image - either uploaded file OR URL
+    let featuredImagePath = null;
+    if (req.file) {
+      // If file was uploaded via multipart/form-data
+      featuredImagePath = `/uploads/images/${req.file.filename}`;
+    } else if (featuredImageUrl && featuredImageUrl.trim() !== '') {
+      // If URL was provided via JSON
+      featuredImagePath = featuredImageUrl.trim();
+    }
+
     // Create new post
     const newPost = new BlogPost({
       title,
@@ -269,7 +278,7 @@ router.post('/posts', authenticateToken, upload.single('featuredImage'), async (
       category,
       tags: processedTags,
       status: status || 'draft',
-      featuredImage: req.file ? `/uploads/images/${req.file.filename}` : null
+      featuredImage: featuredImagePath
     });
 
     await newPost.save();
